@@ -24,20 +24,13 @@ class CrimeSpider(scrapy.Spider):
             "spider_name": self.name,
         })
         for url in self.start_urls:
-            if not self.payload:
-                yield self.ScrapyRequest(
-                    url=url,
-                    callback=self.initial_parse,
-                    errback=self.error_handler,
-                    meta=self.meta)
-            else:
-                yield self.FormRequest(
-                    url=url,
-                    formdata=self.payload,
-                    callback=self.initial_parse,
-                    errback=self.error_handler,
-                    meta=self.meta,
-                )
+            yield self.FormRequest(
+                url=url,
+                formdata=self.payload,
+                callback=self.initial_parse,
+                errback=self.error_handler,
+                meta=self.meta,
+            )
 
     def error_handler(self, failure):
         self.logger.error(repr(failure))
