@@ -1,7 +1,6 @@
 from datetime import datetime
 
-import scrapy
-from scrapy import FormRequest, Request
+from scrapy import FormRequest, Request, Spider
 from scrapy.http import HtmlResponse
 from scrapy.loader import ItemLoader
 from scrapy.spidermiddlewares.httperror import HttpError
@@ -10,18 +9,23 @@ from twisted.internet.error import DNSLookupError, TCPTimedOutError
 from crimebot.items import CrimeItem
 
 
-class RewardsforJusticeSpider(scrapy.Spider):
+class RewardsforJusticeSpider(Spider):
     name = "rewardsforjustice"
     allowed_domains = ["rewardsforjustice.net"]
-    start_urls = ["https://rewardsforjustice.net/wp-admin/admin-ajax.php"]
+    start_urls = [
+        "https://rewardsforjustice.net/index/" +
+        "?jsf=jet-engine:rewards-grid&tax=crime-category:1070%2C1071%2C1073%2C1072%2C1074",
+    ]
     payload = {
-        "action": "jet_smart_filters",
-        "provider": "jet-engine/rewards-grid",
-        "query[_tax_query_crime-category][]": ["1070", "1071", "1072", "1073", "1074"],
-        "paged": "1",
-        "settings[lisitng_id]": "22078",
-        "settings[posts_num]": "50",
-        "settings[max_posts_num]": "50",
+        "action": "jet_engine_ajax",
+        "handler": "get_listing",
+        "page_settings[post_id]": "22076",
+        "page_settings[queried_id]": "22076|WP_Post",
+        "page_settings[element_id]": "ddd7ae9",
+        "page_settings[page]": "1",
+        "listing_type": "elementor",
+        "isEditMode": "false",
+        "addedPostCSS[]": "22078"
     }
     output_filename = f"{name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     custom_settings = {"FEEDS": {
@@ -42,34 +46,34 @@ class RewardsforJusticeSpider(scrapy.Spider):
             yield FormRequest(
                 url=url,
                 formdata=self.payload,
-                callback=self.initial_parse,
+                callback=self.parse,
                 errback=self.error_handler,
                 meta=meta,
             )
 
-    def initial_parse(self, response):
+    def parse(self, response, **kwargs):
         json_response = response.json()
-        html_response = HtmlResponse(url="", body=json_response['content'], encoding='utf-8')
+        html_response = HtmlResponse(url="", body=json_response['data']['html'], encoding='utf-8')
         criminal_list = html_response.xpath("//div[@data-elementor-type='jet-listing-items']/parent::div")
         if criminal_list:
-            curr_page = int(response.meta['payload']['paged'])
+            curr_page = int(response.meta['payload']['page_settings[page]'])
             curr_page += 1
             meta = response.meta
-            meta['payload']['paged'] = str(curr_page)
+            meta['payload']['page_settings[page]'] = str(curr_page)
             yield FormRequest(
                 url=response.url,
                 formdata=meta['payload'],
-                callback=self.initial_parse,
+                callback=self.parse,
                 errback=self.error_handler,
                 meta=meta,
                 dont_filter=True
             )
 
-            criminal_link = [x.xpath("./a/@href").get() for x in criminal_list]
+            criminal_list_link = [x.xpath("./a/@href").get() for x in criminal_list]
             category_list = [x.xpath(
-                ".//h2[text()='Kidnapping' or text()='Terrorism Financing' or text()='Acts of Terrorism' or text()='Terrorism - Individuals' or text()='Organizations']/text()").get()
-                             for x in criminal_list]
-            item_list = list(zip(criminal_link, category_list))
+                ".//h2[text()='Kidnapping' or text()='Terrorism Financing' or text()='Acts of Terrorism' or " +
+                "text()='Terrorism - Individuals' or text()='Organizations']/text()").get() for x in criminal_list]
+            item_list = list(zip(criminal_list_link, category_list))
             for link, category in item_list:
                 item_meta = response.meta
                 item_meta['category'] = category
@@ -91,7 +95,8 @@ class RewardsforJusticeSpider(scrapy.Spider):
                          "//h4[contains(text(),'Reward')]/parent::div/parent::div/following-sibling::div[1]/div/h2")
         loader.add_xpath('associated_organization', "//p[contains(text(),'Associated Organization')]/a")
         loader.add_xpath('associated_location',
-                         "//h2[contains(text(),'Associated Location')]/parent::div/parent::div/following-sibling::div[1]//span[@class='jet-listing-dynamic-terms__link']")
+                         "//h2[contains(text(),'Associated Location')]/parent::div/parent::div/" +
+                         "following-sibling::div[1]//span[@class='jet-listing-dynamic-terms__link']")
         loader.add_xpath('image_url', "//div[contains(@class,'terrorist-gallery')]//img/@src")
         loader.add_xpath('date_of_birth',
                          "//h2[contains(text(),'Date of Birth')]/parent::div/parent::div/following-sibling::div[1]/div")
