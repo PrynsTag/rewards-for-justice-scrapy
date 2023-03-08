@@ -39,8 +39,8 @@ class RewardsforJusticeSpider(CrimeSpider):
 
     def initial_parse(self, response):
         json_response = response.json()
-        parsed_response = self.HtmlResponse(url="", body=json_response['content'], encoding='utf-8')
-        criminal_list = parsed_response.xpath("//div[@data-elementor-type='jet-listing-items']/parent::div")
+        html_response = self.HtmlResponse(url="", body=json_response['content'], encoding='utf-8')
+        criminal_list = html_response.xpath("//div[@data-elementor-type='jet-listing-items']/parent::div")
         if criminal_list:
             curr_page = int(response.meta['payload']['paged'])
             curr_page += 1
