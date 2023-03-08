@@ -1,17 +1,19 @@
 from datetime import datetime
 
+import scrapy
+from scrapy import FormRequest, Request
+from scrapy.http import HtmlResponse
 from scrapy.loader import ItemLoader
+from scrapy.spidermiddlewares.httperror import HttpError
+from twisted.internet.error import DNSLookupError, TCPTimedOutError
 
 from crimebot.items import CrimeItem
-from crimebot.spiders.crime_spider import CrimeSpider
 
 
-class RewardsforJusticeSpider(CrimeSpider):
+class RewardsforJusticeSpider(scrapy.Spider):
     name = "rewardsforjustice"
     allowed_domains = ["rewardsforjustice.net"]
-    start_urls = [
-        "https://rewardsforjustice.net/wp-admin/admin-ajax.php",
-    ]
+    start_urls = ["https://rewardsforjustice.net/wp-admin/admin-ajax.php"]
     payload = {
         "action": "jet_smart_filters",
         "provider": "jet-engine/rewards-grid",
@@ -32,21 +34,29 @@ class RewardsforJusticeSpider(CrimeSpider):
     }}
 
     def start_requests(self):
-        self.meta.update({
-            "payload": self.payload
-        })
-        return super().start_requests()
+        meta = {
+            "payload": self.payload,
+            "spider_name": self.name,
+        }
+        for url in self.start_urls:
+            yield FormRequest(
+                url=url,
+                formdata=self.payload,
+                callback=self.initial_parse,
+                errback=self.error_handler,
+                meta=meta,
+            )
 
     def initial_parse(self, response):
         json_response = response.json()
-        html_response = self.HtmlResponse(url="", body=json_response['content'], encoding='utf-8')
+        html_response = HtmlResponse(url="", body=json_response['content'], encoding='utf-8')
         criminal_list = html_response.xpath("//div[@data-elementor-type='jet-listing-items']/parent::div")
         if criminal_list:
             curr_page = int(response.meta['payload']['paged'])
             curr_page += 1
             meta = response.meta
             meta['payload']['paged'] = str(curr_page)
-            yield self.FormRequest(
+            yield FormRequest(
                 url=response.url,
                 formdata=meta['payload'],
                 callback=self.initial_parse,
@@ -63,7 +73,7 @@ class RewardsforJusticeSpider(CrimeSpider):
             for link, category in item_list:
                 item_meta = response.meta
                 item_meta['category'] = category
-                yield self.ScrapyRequest(
+                yield Request(
                     url=link,
                     callback=self.parse_item,
                     errback=self.error_handler,
@@ -90,3 +100,17 @@ class RewardsforJusticeSpider(CrimeSpider):
         self.logger.debug(f"Item Loader: {parsed_data}")
 
         yield parsed_data
+
+    def error_handler(self, failure):
+        self.logger.error(repr(failure))
+        if failure.check(HttpError):
+            response = failure.value.response
+            self.logger.error('HttpError on %s', response.url)
+
+        elif failure.check(DNSLookupError):
+            request = failure.request
+            self.logger.error('DNSLookupError on %s', request.url)
+
+        elif failure.check(TimeoutError, TCPTimedOutError):
+            request = failure.request
+            self.logger.error('TimeoutError on %s', request.url)
