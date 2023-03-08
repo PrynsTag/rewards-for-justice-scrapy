@@ -28,6 +28,10 @@ def get_date(date):
     return datetime.strptime(clean_date, "%B %d, %Y").isoformat()
 
 
+def clean_text(text):
+    return text.replace(u"\xa0", " ").replace(u"\u00A0", " ").strip()
+
+
 class CrimeItem(scrapy.Item):
     page_url = scrapy.Field()
     category = scrapy.Field()
@@ -35,6 +39,6 @@ class CrimeItem(scrapy.Item):
     reward_amount = scrapy.Field(input_processor=MapCompose(remove_tags), output_processor=TakeFirst())
     associated_organization = scrapy.Field(input_processor=MapCompose(remove_tags))
     associated_location = scrapy.Field(input_processor=MapCompose(remove_tags, str.strip))
-    about = scrapy.Field(input_processor=MapCompose(remove_tags), output_processor=Join("\n"))
+    about = scrapy.Field(input_processor=MapCompose(remove_tags, clean_text), output_processor=Join(" "))
     image_url = scrapy.Field()
     date_of_birth = scrapy.Field(input_processor=MapCompose(remove_tags, get_date), output_processor=TakeFirst())
